@@ -1,0 +1,503 @@
+//final project main
+#include "NXTServo-lib-UW.c"
+
+//const float TAX = 0.13;
+const int HEIGHT0 = 41;
+const float LENGTH0 = 35.0;
+const float WIDTH0 = 35.0;
+
+struct Parcel
+{
+	float x, y, z, cost;
+	int category, weight;
+	bool tracked, insured;
+	string shippingType;
+}
+
+void calibrate(int & weightCategory, int & threshold1, int & threshold2, int & threshold3, int & threshold4, int & lowest, int & highest)
+{ //calibrates the weight gradient to account for ambient light
+	eraseDisplay();
+	displayString(0, "CALIBRATE");
+	displayString(1, "Slowly push box");
+	displayString(2, "all the way down"); // instructs the user to make the colour sensor sense the full
+	displayString(3, "and back up.");			// range of the gradient -- gradient is white at top, black at bottom,
+	displayString(4, "Press orange");			// white is lightest parcel, black is heaviest parcel
+	displayString(5, "button when done.");
+
+	while (nNxtButtonPressed != 3)
+	{
+		int value = SensorRaw[S3];
+		if (value > highest)
+			highest = value;
+		else if (value < lowest && value > 0)
+			lowest = value;
+	}
+
+	threshold4 = (highest - lowest) / 5;
+	threshold3 = (2 * (highest - lowest)) / 5 + lowest;
+	threshold2 = (3 * (highest - lowest)) / 5 + lowest;
+	threshold1 = (4 * (highest - lowest)) / 5 + lowest;
+/*
+FIVE INTERVALS:
+SensorRaw < threshold4 - heaviest package (not much light detected - black)
+threshold3 < SensorRaw < threshold4
+threshold2 < SensorRaw < threshold3
+threshold1 < SensorRaw < threshold2
+SensorRaw > threshold - lightest package (a lot of light detected - white)
+*/
+/*
+eraseDisplay();
+while (nNxtButtonPressed != 1)
+	{
+		displayString(0, "1 %d", threshold1);  // TESTING CODE
+		displayString(1, "2 %d", threshold2);
+		displayString(2, "3 %d", threshold3);
+		displayString(3, "4 %d", threshold4);
+		displayString(5, "high %d", highest);
+		displayString(6, "low %d", lowest);
+	}
+*/
+	eraseDisplay();
+
+	displayString(0, "Calibration");
+	displayString(1, "success");
+	displayString(2, "Press orange");
+	displayString(3, "button");
+	while (nNxtButtonPressed != 3)
+	{}
+	eraseDisplay();
+}
+
+ //referenced assignment 7 question 2
+
+
+/* Oliver Witham's Code
+
+Shipping Option Function Prototypes */
+bool buttonToBool (int data);
+void shippingOptions(Parcel & data);
+void shippingLevel(string & shipping);
+int cleanPosition(int i);
+
+// Take in button press and return it as a bool
+bool buttonToBool (int data) {
+if (data == 1)
+return false;
+else
+return true;
+}
+
+// Main shipping options function
+void shippingOptions(Parcel & data)
+{
+	eraseDisplay();
+
+	do
+	{
+		displayString(0, "Would you like");
+		displayString(1, "your parcel");
+		displayString(2, "insured?");
+		displayString(6, "Yes           No");
+
+		while (nNxtButtonPressed == -1) {}
+	}while(nNxtButtonPressed == 3); // Ensures that left or right buttons only are pressed
+
+	data.insured = buttonToBool(nNxtButtonPressed); // Store insured status as bool
+	while (nNxtButtonPressed != -1) {}
+	eraseDisplay();
+
+	wait1Msec(500);
+
+	do {
+		displayString(0, "Would you like");
+		displayString(1, "your parcel");
+		displayString(2, "tracked?");
+		displayString(6, "Yes           No");
+		while (nNxtButtonPressed == -1) {}
+	}while(nNxtButtonPressed == 3); // Ensures that left or right buttons only are pressed
+
+	data.tracked = buttonToBool(nNxtButtonPressed); // Store tracked status as bool
+	while (nNxtButtonPressed != -1) {}
+	eraseDisplay();
+	wait1Msec(500);
+
+	shippingLevel(data.shippingType); // Receives and stores shipping level as a string
+
+}
+
+void shippingLevel(string & shipping) { // Function to receive and store shipping level as a string
+	int chosen = -1; // Position in array of chosen shipping type
+	int position = 0; // Current position
+	string shippingTypes[5] = {"Expedited","Priority","Regular","Economy", "International"};
+
+	do {
+		// Outputs information: currently chosen shipping type and number of selection out of total
+		eraseDisplay();
+		displayString(1, "%s", shippingTypes[cleanPosition(position)]);
+		displayString(4, "Option %d of 5", position+1);
+		displayString(6, "<<     OK     >>");
+
+		while(nNxtButtonPressed == -1) {}
+
+		if(nNxtButtonPressed == 3) // Select button chosen
+			chosen = position;
+		else
+		{
+			if(nNxtButtonPressed == 2)
+			position--; // Right button pressed, move to the right through the array
+			else
+			position++; // Left button pressed, move to the left through the array
+		}
+
+		position = cleanPosition(position); // Make position value a real array position
+
+		while(nNxtButtonPressed != -1) {}
+
+	}while(chosen == -1); // Loops until the select button is clicked
+
+	eraseDisplay();
+	shipping = shippingTypes[chosen]; // Store shipping type to struct
+}
+
+int cleanPosition(int i) {
+	if (i == -1) // Selection to the left of the last array element, send to end
+		i = 4;
+	else if (i == 5) // Selection to the right of the first array element, send to start
+		i = 0;
+	return i; // Selection valid, no change needed
+}
+/* End of Oliver Witham's Code */
+
+void resetPosition()  //returns colour table to avaliable for ease of movement to next category.
+{
+	motor[motorB] = -30;
+
+	while (nMotorEncoder[motorB] > 0)
+	{}
+
+	motor[motorB] = 0;
+	nMotorEncoder[motorB] = 0;
+}
+
+void rotateTable(float cost)
+{
+	int i = 0;
+	nMotorEncoder[motorB] = 0;
+
+	//give a position with respect to cost
+	if (cost < 0)
+		i = 1;
+	else if (cost >= 0 && cost < 7.5)
+		i = 2;
+	else if (cost >= 7.5 && cost < 15)
+		i = 3;
+	else if (cost >= 15 && cost < 22.5)
+		i = 4;
+	else if (cost >= 22.5 && cost < 30)
+		i = 5;
+	else    //cost > 30
+		i = 6;
+
+	motor[motorB] = 30;
+	//7 segments: avaliable, measuring, 1-5 cost ranges like parcel categories
+	while (nMotorEncoder[motorB] < 52 * i)
+	{}
+
+	motor[motorB] = 0;
+}
+
+int weight(int threshold1, int threshold2, int threshold3, int threshold4, int lowest, int highest)
+{
+	int measurement = SensorRaw[S3];
+	//displayString(6,"%d",measurement); //TESTING CODE
+
+	if (measurement < threshold4)
+		int weightCategory = 5; // heaviest
+	else if (measurement > threshold4 && measurement < threshold3) // placing the weight within the thresholds
+		weightCategory = 4;                                        // calculated in calibrate function to get
+	else if (measurement > threshold3 && measurement < threshold2) // category for sorting
+		weightCategory = 3;
+	else if (measurement > threshold2 && measurement < threshold1)
+		weightCategory = 2;
+	else
+		weightCategory = 1; // lightest
+	return weightCategory;
+}
+
+// Measures Length and Width of Parcel
+void lengthAndWidth (Parcel & p1)
+{
+	// off set from perfect zero in order to ensure plastic does not contact dowel
+	setServoPosition(S1, 1, 0);
+	wait1Msec(2000);
+
+	// Reset motor encoder count to use this as value for calculation + move forward
+	nMotorEncoder[motorC] = 0;
+	motor[motorC] = 30;
+
+	// Until touch sensor or max length is triggered
+	while(SensorValue[S4] == 0 && (nMotorEncoder[motorC]*PI*2.25)/180 < LENGTH0){}
+
+	// Stop motor once condition is triggered
+	motor[motorC] = 0;
+	// Calculate length value and save it to struct
+	p1.x = LENGTH0 - (nMotorEncoder[motorC]*PI*2.25)/180.0;
+	wait1Msec(300);
+	// Reverse motor until motor encoder count reaches 0
+	motor[motorC]= -20;
+
+	while(nMotorEncoder[motorC] > 0){}
+
+	// Stop motor
+	motor[motorC] = 0;
+	wait1Msec(300);
+
+	// Use servo to rotate arm 80 degrees clockwise to measure width
+	setServoPosition(S1, 1, 80);
+	wait1Msec(5000);
+
+	// Reset motor encoder count if any changes occurred and make motor push bar forward
+	nMotorEncoder[motorC] = 0;
+	motor[motorC] = 30;
+
+	// Until touch sensor or max width triggers
+	while(SensorValue[S4] == 0 && (nMotorEncoder[motorC]*PI*2.25)/180 < WIDTH0){}
+
+	// Stop motor + calculate width and save it
+	motor[motorC] = 0;
+	p1.y = WIDTH0 - (nMotorEncoder[motorC]*PI*2.25)/180.0;
+	wait1Msec(300);
+
+	// Move backwards until motor encoder reaches value of 0 and then stop
+	motor[motorC]= -20;
+	while(nMotorEncoder[motorC] > 0){}
+	motor[motorC]=0;
+
+	// Make servo rotate 80 degrees counterclockwise
+	setServoPosition(S1, 1, -80);
+	wait1Msec(5000);
+}
+
+int categorization(float x, float y, float z, int mass) // if any dimension (x, y, z, or weight) is over the set
+{														// value for category, it moves down to the next category
+	int returnValue = 0;
+	if (z < 3)
+	{
+		if (mass <= 1)
+			returnValue = 1; // light letter
+		else // mass > 1
+			returnValue = 2; // heavy letter
+	}
+	else if (z < 10)
+	{
+		if (x < 10 && y < 10)
+		{
+			if (mass <= 2)
+				returnValue = 3; // small parcel
+			else if (mass <= 4)
+				returnValue = 4; // med parcel
+			else // mass > 4
+				returnValue = 5; // large/heavy parcel
+		}
+		else if (x < 23 && y < 23)
+		{
+			if (mass <= 4)
+				returnValue = 4; // med parcel
+			else // mass > 4
+				returnValue = 5; // large/heavy parcel
+		}
+		else // x or y > 23
+			returnValue = 5; // large/heavy parcel
+		}
+	else if (z < 23)
+	{
+		if (mass <= 4 || x < 23 || y < 23)
+			returnValue = 4; // med parcel
+		else
+			returnValue = 5; // large/heavy parcel
+	}
+	else // z > 23
+		returnValue = 5; // large/heavy parcel
+	return returnValue;
+}
+
+// Calculate cost based on Categories + Shipping Type + Insured + Tracked
+float cost(Parcel p1)
+{
+	// Initialize cost value at 0
+	float cost0 = 0.0;
+
+	// If category is of value 1, 2, 3, 4 or 5 add specific number
+	if (p1.category == 1)
+		cost0 += 1.80;
+
+	else if (p1.category == 2)
+		cost0 += 4.10;
+
+	else if (p1.category == 3)
+		cost0 += 8.10;
+
+	else if (p1.category == 4)
+		cost0 += 12.50;
+
+	else if (p1.category == 5)
+		cost0 += 20.21;
+
+	// If shipping type is either Expedited, Priority, Regular, Economy, International multiply by specified amount
+	if (p1.shippingType == "Expedited")
+		cost0 *= 1.50;
+
+	else if (p1.shippingType == "Priority")
+		cost0 *= 1.40;
+
+	else if (p1.shippingType == "Regular")
+		cost0 *= 1.10;
+
+	else if (p1.shippingType == "Economy")
+		cost0 *= 1.00;
+
+	else if (p1.shippingType == "International")
+		cost0 *= 2.00;
+
+	// If package is insured
+	if (p1.insured)
+		cost0 *= 1.40;
+
+	// If package is tracked
+	if (p1.tracked)
+		cost0 += 5.00;
+
+	// Return total value of cost added altogether
+	return cost0;
+}
+
+task main() // MAIN!!!!!!!!
+{
+	int weightCategory = 0, threshold1 = 205, threshold2 = 410, threshold3 = 615, threshold4 = 820, lowest = 1023,
+			highest = 0, totalParcels = 0;
+	float avgHeight = 0,avgX = 0, avgY = 0;
+
+	SensorType[S1] = sensorI2CCustom9V; //servo
+	SensorType[S2] = sensorSONAR;
+	SensorType[S3] = sensorColorNxtNONE;
+	SensorType[S4] = sensorTouch;
+
+	//establish range for weight function
+	calibrate(weightCategory, threshold1, threshold2, threshold3, threshold4, lowest, highest);
+
+    /*
+	eraseDisplay();
+	displayString(3, "Press button to");
+	displayString(4, "begin");
+	wait1Msec(500);
+
+	while (nNxtButtonPressed == -1)
+	{}
+	while (nNxtButtonPressed != -1)
+	{}
+    */
+
+    bool anotherParcel = false; //additional parcel measurements later
+
+	do
+	{
+		Parcel p1;
+
+		shippingOptions(p1);
+
+		displayString(2, "Insert parcel");
+		displayString(4, "Press button");
+		displayString(5, "to continue");
+
+		while (nNxtButtonPressed == -1)
+		{}
+		while (nNxtButtonPressed != -1)
+		{}
+
+		rotateTable(-1); //moves rotating table to measuring
+
+		eraseDisplay();
+		displayString(3, "Measuring height");
+		displayString(4, "and weight...");
+
+		wait1Msec(2000);
+		eraseDisplay();
+
+		p1.weight = weight(threshold1, threshold2, threshold3, threshold4, lowest, highest);
+
+		int height = SensorValue[S2]; // HEIGHT
+
+		if (height > 42)	//accounts for height of 255
+			height = 0;
+		else if (height < 0)  //accounts for negative height (sensor error)
+			height = 41;
+		p1.z = HEIGHT0 - height;
+		if (p1.z <= 0)
+			p1.z = 0;
+
+		displayString(1,"Done height and");
+		displayString(2,"weight");
+
+		if (p1.z > 3)
+		{
+			displayString(4,"Measuring");
+			displayString(5,"dimensions...");
+			lengthAndWidth(p1);
+		}
+
+		p1.category = categorization(p1.x, p1.y, p1.z, weightCategory);
+		p1.cost = cost(p1);
+
+		eraseDisplay();
+		displayString(0, "Length: %.1f", p1.x);
+		displayString(1, "Width: %.1f", p1.y);
+		displayString(2, "Height: %d", p1.z);
+		displayString(3, "Weight: %d", p1.weight);
+		displayString(4, "Cost: %.2f", p1.cost);
+
+		resetPosition();
+		rotateTable(p1.cost);
+
+		displayString(5, "Press button");
+		displayString(6, "to continue");
+
+		while (nNxtButtonPressed == -1)
+		{}
+		while (nNxtButtonPressed != -1)
+		{}
+
+		eraseDisplay();
+
+		do {
+		displayString(2, "Measure another");
+		displayString(3, "parcel?");
+		displayString(6, "Yes           No");
+		while(nNxtButtonPressed == -1) {}
+	  }while (nNxtButtonPressed == 3);
+		if (nNxtButtonPressed == 2)
+			anotherParcel = true;
+		else if (nNxtButtonPressed == 1)
+			anotherParcel = false;
+		while (nNxtButtonPressed != -1) {}
+
+		totalParcels++;
+		avgHeight += p1.z;
+		avgX += p1.x;
+		avgY += p1.y;
+
+		resetPosition();
+
+	} while (anotherParcel == true);
+
+		avgHeight /= totalParcels;
+		avgX /= totalParcels;
+		avgY /= totalParcels;
+
+		eraseDisplay();
+		displayString(0, "# Parcels: %d", totalParcels);
+		displayString(1, "Avg Height: %d", avgHeight);
+		displayString(2, "Avg Width: %.1f", avgY);
+		displayString(3, "Avg Length: %.1f", avgX);
+
+		wait1Msec(5000);
+}
